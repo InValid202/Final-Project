@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+
+<!-- lidar.xacro -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+<xacro:macro name="laser" params="parent_link"> 
+
+    <!-- Add a Sensor Link -->
+    <link name="lidar_link">
+        <visual>
+            <geometry>
+                <cylinder radius="0.03" length="0.06" /> <!-- Example shape, adjust as needed -->
+            </geometry>
+            <material name="blue" /> <!-- Example material, adjust as needed -->
+        </visual>
+        <collision>
+            <geometry>
+                <cylinder radius="0.03" length="0.06" /> <!-- Example shape, adjust as needed -->
+            </geometry>
+        </collision>
+    </link>
+    <joint name="lidar_joint" type="fixed">
+        <parent link="${parent_link}" />
+        <child link="lidar_link" />
+        <origin xyz="0.0 0 0.2" rpy="0 0 0" />
+    </joint>
+
+    <gazebo reference="lidar_link">
+        <material>Gazebo/Red</material>
+
+        <sensor name="lidar" type="ray">
+            <pose> 0 0 0 0 0 0 </pose>
+            <visualize>true</visualize>
+            <update_rate>30</update_rate>
+            <ray>
+                <scan>
+                    <horizontal>
+                        <samples>1024</samples>
+                        <min_angle>-3.14</min_angle>
+                        <max_angle>3.14</max_angle>
+                    </horizontal>
+                </scan>
+                <range>
+                    <min>0.1</min>
+                    <max>20</max>
+                </range>
+            </ray>
+
+            <plugin name="lidar_controller" filename="libgazebo_ros_laser.so">
+                <topicName>/scan</topicName>
+                <frameName>lidar_link</frameName>
+            </plugin>
+
+        </sensor>
+    </gazebo>
+</xacro:macro>
+</robot>
