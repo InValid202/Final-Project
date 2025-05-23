@@ -1,0 +1,9 @@
+<launch>
+    <include file="$(find turtlebot3_gazebo)/launch/turtlebot3_world_restaurant.launch" />
+    <include file="$(find turtlebot3_navigation)/launch/turtlebot3_navigation.launch">
+        <arg name="map_file" value="/home/beer/tumpoom_ws/src/turtlebot3_simulations/turtlebot3_gazebo/maps/map.yaml" />
+    </include>
+
+    <!-- Run ros_bridge.py -->
+    <node pkg="turtlebot3_gazebo" type="ros_bridge.py" name="ros_bridge" output="screen" />
+</launch>
