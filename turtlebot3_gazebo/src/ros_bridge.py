@@ -6,19 +6,36 @@ import threading
 from std_msgs.msg import String, Bool
 from geometry_msgs.msg import PoseStamped, Pose, Point, Quaternion
 import actionlib
-from move_base_msgs.msg import MoveBaseGoal, MoveBaseAction, MoveBaseActionFeedback
+from move_base_msgs.msg import MoveBaseGoal, MoveBaseAction
 # from pathlib import Path
-from actionlib_msgs.msg import GoalStatusArray
-import requests
-import json
+# from actionlib_msgs.msg import GoalStatusArray
+import xmlrpc.client
+import os
 
 
 class ROSBridgeServer:
     def __init__(self):
+        # navigate parameter
         self.ongoing_order = []
         self.delivered_order = []
-        self.not_available = False
         self.table_locations = self._get_table_locations()
+
+        # api parameter
+        self.odoo_url = 'https://invalid202-pim-final-project.odoo.com/'
+        self.db = 'invalid202-pim-final-project-main-20225624'
+        # self.username = os.getenv('ODOO_USERNAME')
+        # self.password = os.getenv('ODOO_PASSWORD')
+        self.username = 'admin'
+        self.password = '283570076f72f5ef815e6da6d438d96b1277f08c'
+        self.common = xmlrpc.client.ServerProxy('{}/xmlrpc/2/common'.format(self.odoo_url))
+        self.common.version()
+        self.uid = self.common.authenticate(self.db, self.username, self.password, {})
+        rospy.loginfo(f'UID: {self.uid}')
+        self.models = xmlrpc.client.ServerProxy('{}/xmlrpc/2/object'.format(self.odoo_url))
+        self.updated_data = {'stage_id': 3,}
+
+        # api co with ros
+        self.not_available = False
         self.app = Flask(__name__)
         CORS(self.app)
 
@@ -88,6 +105,15 @@ class ROSBridgeServer:
                 self.send_goal('original')
                 self.not_available = False
                 self.status_pub.publish("True")
+                record_ids = self.models.execute_kw(
+                    self.db, self.uid, self.password,
+                    'pos_preparation_display.order.stage', 'search',
+                    [[['stage_id', '=', 5]]]
+                )
+                rospy.loginfo(f'record_ids:{record_ids}')
+                result = self.models.execute_kw(self.db, self.uid, self.password, 'pos_preparation_display.order.stage',
+                                                'write', [record_ids, self.updated_data])
+                rospy.loginfo(f'Result for update stage: {result}')
 
     def handle_order_stage(self):
         if self.not_available:

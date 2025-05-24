@@ -7,7 +7,7 @@ class RobotGUI:
     def __init__(self, master):
         self.master = master
         self.master.title("AMR Robot GUI")
-
+        self.master.geometry("600x400")
         self.status = True
         self.current_table = ''
         self.table_list = []
@@ -67,7 +67,10 @@ class RobotGUI:
             self.status_label.config(text=f"Robot Status: Arrived at the Table {self.current_table}", fg="#7B68EE")
             self.confirm_button.pack(pady=10)
         elif not self.status and self.current_table != '0' and self.navigation_status:
-            self.status_label.config(text=f"Robot Status: Delivering Orders (Table {self.current_table})", fg="	#FF8C00")
+            self.status_label.config(
+                text=f"Robot Status: Delivering Orders (Table {self.current_table})",
+                fg="yellow"
+            )
         elif not self.status and self.current_table == '0':
             self.table_list = []
             self.status_label.config(text=f"Robot Status: Return to Home", fg="red")
