@@ -3,23 +3,36 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import rospy
 import threading
-from std_msgs.msg import String
-from geometry_msgs.msg import PoseStamped, Pose, Point, Quaternion, PoseWithCovarianceStamped, Twist
+from std_msgs.msg import String, Bool
+from geometry_msgs.msg import PoseStamped, Pose, Point, Quaternion
 import actionlib
 from move_base_msgs.msg import MoveBaseGoal, MoveBaseAction, MoveBaseActionFeedback
 # from pathlib import Path
 from actionlib_msgs.msg import GoalStatusArray
+import requests
+import json
 
 
 class ROSBridgeServer:
     def __init__(self):
-        self.stored_orders = []
+        self.ongoing_order = []
+        self.delivered_order = []
         self.not_available = False
         self.table_locations = self._get_table_locations()
         self.app = Flask(__name__)
         CORS(self.app)
 
+        # publisher list
+        self.status_pub = rospy.Publisher('/robot_availability', String, queue_size=10)
         self.order_pub = rospy.Publisher('/order_stage_topic', String, queue_size=10)
+        self.current_table_pub = rospy.Publisher('/current_table', String, queue_size=10)
+        self.all_table_pub = rospy.Publisher('/all_table', String, queue_size=10)
+        self.navigation_status_pub = rospy.Publisher('/navigation_status', Bool, queue_size=10)
+
+        # subscriber list
+        self.gui_sub = rospy.Subscriber("/gui_commands", String, self.gui_command_callback)
+
+        # service for navigate
         self.move_action_client = actionlib.SimpleActionClient('move_base', MoveBaseAction)
         rospy.loginfo("Waiting for move_base action server...")
         self.move_action_client.wait_for_server()
@@ -43,6 +56,38 @@ class ROSBridgeServer:
     def home(self):
         return "Hello, This is Local Host for ROS to receive Message From Odoo."
 
+    def gui_command_callback(self, msg):
+        if msg.data == "start_delivery" and len(self.ongoing_order) > 0:
+            table_number = self.ongoing_order[0]["table_number"]
+            self.current_table_pub.publish(f'{table_number}')
+            self.not_available = True
+            self.status_pub.publish("False")
+            table_number = self.ongoing_order[0]["table_number"]
+            self.current_table_pub.publish(f'{table_number}')
+            self.send_goal(str(table_number))
+
+        elif msg.data == "confirm_receive":
+            current_delivering_table = self.ongoing_order[0]["table_number"]
+            new_order = []
+            new_delivered = []
+            for order in self.ongoing_order:
+                if order["table_number"] != current_delivering_table:
+                    new_order.append(order)
+                else:
+                    new_delivered.append(order)
+            self.ongoing_order = new_order
+            self.delivered_order = new_delivered
+            if len(self.ongoing_order) > 0:
+                self.not_available = True
+                self.status_pub.publish("False")
+                next_table = self.ongoing_order[0]["table_number"]
+                self.current_table_pub.publish(f'{next_table}')
+                self.send_goal(str(next_table))
+            else:
+                self.current_table_pub.publish('0')
+                self.send_goal('original')
+                self.not_available = False
+                self.status_pub.publish("True")
 
     def handle_order_stage(self):
         if self.not_available:
@@ -57,14 +102,15 @@ class ROSBridgeServer:
         table_number = data.get('tableNumber')
 
         msg = f"Order {order_id}, Stage {stage_id}, Table {table_number}"
-
-        self.stored_orders.append({
+        self.all_table_pub.publish(f'{table_number}')
+        self.ongoing_order.append({
             'order_id': order_id,
             'stage_id': stage_id,
             'table_number': table_number
         })
 
-        self.send_goal(str(table_number))
+        # self.send_goal(str(table_number))
+        rospy.loginfo(f'order store: {self.ongoing_order}')
         self.order_pub.publish(msg)
 
         return jsonify({
@@ -87,29 +133,21 @@ class ROSBridgeServer:
         goal = MoveBaseGoal()
         goal.target_pose.header.frame_id = "map"
         goal.target_pose.header.stamp = rospy.Time.now()
+
         # assign pose
         pose = Pose()
         pose.position = Point(location['x_position'], location['y_position'], location['z_position'])
         pose.orientation = Quaternion(0, 0, location['z_orientation'], location['w_orientation'])
 
         goal.target_pose.pose = pose
-        # goal.target_pose.pose.position.x = location['x_position']
-        # goal.target_pose.pose.position.y = location['y_position']
-        # goal.target_pose.pose.orientation.z = location['z_orientation']
-        # goal.target_pose.pose.orientation.w = location['w_orientation']
 
         rospy.loginfo(f"[ROS] Sending goal to move_base: {table_number}")
+        self.navigation_status_pub.publish(True)
         self.move_action_client.send_goal(goal)
         self.move_action_client.wait_for_result()
         result = self.move_action_client.get_result()
+        self.navigation_status_pub.publish(False)
         print("Goal reached:", result)
-
-        # goal.pose.position.x = location['x_position']
-        # goal.pose.position.y = location['y_position']
-        # goal.pose.orientation.z = location['z_orientation']
-        # goal.pose.orientation.w = location['w_orientation']
-
-        # self.nav_pub.publish(goal)
 
     def run(self, ssl_cert=None, ssl_key=None):
         if ssl_cert and ssl_key:
